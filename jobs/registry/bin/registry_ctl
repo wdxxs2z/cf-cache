@@ -1,0 +1,42 @@
+#!/bin/bash -e
+
+RUN_DIR=/var/vcap/sys/run/registry
+LOG_DIR=/var/vcap/sys/log/registry
+CONF_DIR=/var/vcap/jobs/registry/config
+PIDFILE=$RUN_DIR/registry.pid
+DATA_DIR=/var/vcap/data/registry
+
+source /var/vcap/packages/pid_utils/pid_utils.sh
+
+case $1 in
+
+  start)
+
+    pid_guard $PIDFILE "regsitry"
+
+    mkdir -p $RUN_DIR
+    chown -R vcap:vcap $RUN_DIR
+
+    mkdir -p $LOG_DIR
+    chown -R vcap:vcap $LOG_DIR
+
+    echo $$ > $PIDFILE
+
+    exec chpst -u vcap:vcap /var/vcap/packages/registry/registry \
+      /var/vcap/jobs/registry/config/registry.yml \
+      2> >(tee -a $LOG_DIR/registry.stderr.log | logger -p user.error -t vcap.registry) \
+      1> >(tee -a $LOG_DIR/registry.stdout.log | logger -p user.info -t vcap.registry)
+
+    ;;
+
+  stop)
+    kill_and_wait $PIDFILE
+
+    ;;
+
+  *)
+    echo "Usage: registry_ctl {start|stop}"
+
+    ;;
+
+esac

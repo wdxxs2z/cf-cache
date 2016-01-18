@@ -1,0 +1,1 @@
+{"service":{"name":"docker-registry","check":{"script":"/var/vcap/jobs/registry/bin/dns_health_check","internal":"3s"},"tags":["receptor-part-0"]}}

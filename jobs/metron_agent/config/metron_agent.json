@@ -1,0 +1,22 @@
+{
+  "Index": 0,
+  "Job": "receptor-part",
+  "Zone": "9f5cab79a85aaeb555a8",
+  "Deployment": "cf",
+
+  "EtcdUrls": ["http://10.10.130.105:4001"],
+  "EtcdMaxConcurrentRequests": 10,
+
+  "SharedSecret": "c12f13df0b192bb19980",
+
+  "DropsondeIncomingMessagesPort": 3457,
+
+  "LoggregatorDropsondePort": 3457,
+
+  "PreferredProtocol": "udp"
+
+  
+  
+  , "Syslog": "vcap.metron_agent"
+  
+}

@@ -1,0 +1,150 @@
+#!/bin/bash -exu
+
+
+
+LOG_DIR=/var/vcap/sys/log/consul_agent
+RUN_DIR=/var/vcap/sys/run/consul_agent
+DATA_DIR=/var/vcap/store/consul_agent
+CONF_DIR=/var/vcap/jobs/consul_agent/config
+CERT_DIR=$CONF_DIR/certs
+PKG=/var/vcap/packages/consul
+PIDFILE=$RUN_DIR/consul_agent.pid
+NODE_NAME='receptor-part-0'
+
+function main() {
+  local confab_package
+  confab_package=/var/vcap/packages/confab
+
+  source /var/vcap/packages/consul-common/utils.sh
+
+  mkdir -p /var/vcap/sys/log/monit
+  exec 1>> /var/vcap/sys/log/monit/consul_agent.out.log
+  exec 2>> /var/vcap/sys/log/monit/consul_agent.err.log
+
+  case $1 in
+    start)
+      start "${confab_package}"
+      ;;
+
+    stop)
+      stop "${confab_package}"
+      ;;
+
+    *)
+      echo "Usage: $0 {start|stop}"
+      ;;
+  esac
+}
+
+function start() {
+  local confab_package
+  confab_package="${1}"
+
+  pid_guard "${PIDFILE}" "consul_agent"
+
+  mkdir -p "${LOG_DIR}"
+  chown -R vcap:vcap "${LOG_DIR}"
+
+  mkdir -p "${RUN_DIR}"
+  chown -R vcap:vcap "${RUN_DIR}"
+
+  mkdir -p "${DATA_DIR}"
+  chown -R vcap:vcap "${DATA_DIR}"
+
+  
+    chown vcap:vcap ${CERT_DIR}/*.{crt,key}
+    chmod 640 ${CERT_DIR}/*.{crt,key}
+  
+
+  
+
+  # "Consul uses a significant amount of virtual memory, since LMDB uses
+  # mmap() underneath. It uses about 700MB of a 32bit system and 40GB on a
+  # 64bit system."
+  #
+  # this mainly applies to bosh-lite
+  ulimit -v unlimited
+  ulimit -n 4096
+
+  # add consul agent's dns to resolv.conf
+  #
+  # /etc/resolv.conf will probably be regenerated all the time, so add the
+  # local dns server to /head, which will be prepended when regenerated.
+  echo 'nameserver 127.0.0.1' > /etc/resolvconf/resolv.conf.d/head
+
+  if resolvconf --updates-are-enabled; then
+    resolvconf -u
+  else
+    # updates are disabled in bosh-lite; in this case just add to
+    # /etc/resolv.conf directly.
+    #
+    # enabling updates and then updating it with resolvconf -u seems to add
+    # dns entries from where the box was generated.
+    if ! grep -q 127.0.0.1 /etc/resolv.conf; then
+      sed -i -e '1i nameserver 127.0.0.1' /etc/resolv.conf
+    fi
+  fi
+
+  local consul_join
+  consul_join="10.10.130.104"
+
+  local server
+  server=false
+
+  setcap cap_net_bind_service=+ep $PKG/bin/consul
+
+  GOMAXPROCS=$(nproc)
+  if [ "$GOMAXPROCS" = "1" ]; then
+    GOMAXPROCS=2
+  fi
+
+  export GOMAXPROCS
+
+  if [ "${server}" != "true" ]; then
+    rm -f $DATA_DIR/serf/local.keyring
+  fi
+
+  local nameservers
+  nameservers=("$(cat /etc/resolv.conf | grep nameserver | awk '{print $2}' | grep -v 127.0.0.1)")
+
+  local recursors
+  recursors=""
+
+  for nameserver in ${nameservers[@]}; do
+    recursors="${recursors} -recursor=${nameserver}"
+  done
+  
+  chpst -u vcap:vcap "${confab_package}/bin/confab" \
+    start \
+    -server=false \
+    -agent-path="${PKG}/bin/consul" \
+    -consul-config-dir="${CONF_DIR}" \
+    -pid-file="${PIDFILE}" \
+    ${recursors} \
+     \
+      -expected-member 10.10.130.104 \
+     \
+     \
+       \
+        -encryption-key 0mTX0RfWX0zxgUVnMimkPw== \
+       \
+     \
+     \
+    2> >(tee -a ${LOG_DIR}/consul_agent.stderr.log | logger -p user.error -t vcap.consul-agent) \
+    1> >(tee -a ${LOG_DIR}/consul_agent.stdout.log | logger -p user.info  -t vcap.consul-agent)
+}
+
+function stop() {
+  local confab_package
+  confab_package="${1}"
+
+  "${confab_package}/bin/confab" \
+    stop \
+    -consul-config-dir "${CONF_DIR}" \
+    -pid-file "${PIDFILE}" \
+    -agent-path="${PKG}/bin/consul" \
+    2> >(tee -a ${LOG_DIR}/consul_agent.stderr.log | logger -p user.error -t vcap.consul-agent) \
+    1> >(tee -a ${LOG_DIR}/consul_agent.stdout.log | logger -p user.info  -t vcap.consul-agent)
+}
+
+main $@

@@ -1,0 +1,44 @@
+#!/bin/bash -e
+
+RUN_DIR=/var/vcap/sys/run/metron_agent
+LOG_DIR=/var/vcap/sys/log/metron_agent
+PIDFILE=$RUN_DIR/metron_agent.pid
+
+source /var/vcap/packages/common/utils.sh
+
+case $1 in
+
+  start)
+    pid_guard $PIDFILE "MetronAgent"
+
+    mkdir -p $RUN_DIR
+    mkdir -p $LOG_DIR
+
+    chown -R vcap:vcap $LOG_DIR
+
+    echo $$ > $PIDFILE
+
+    (crontab -l | sed /metron_agent.*logrotate/d; cat /var/vcap/jobs/metron_agent/config/metron_agent_logrotate.cron) | sed /^$/d | crontab
+
+    /var/vcap/packages/metron_agent/syslog_daemon_config/setup_syslog_forwarder.sh /var/vcap/jobs/metron_agent/config
+
+    
+
+    exec chpst -u vcap:vcap /var/vcap/packages/metron_agent/metron  \
+         --config /var/vcap/jobs/metron_agent/config/metron_agent.json \
+         >>$LOG_DIR/metron_agent.stdout.log \
+         2>>$LOG_DIR/metron_agent.stderr.log
+
+    ;;
+
+  stop)
+    kill_and_wait $PIDFILE 40
+
+    ;;
+
+  *)
+    echo "Usage: metron_agent_ctl {start|stop}"
+
+    ;;
+
+esac
