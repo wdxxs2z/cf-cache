@@ -3,7 +3,7 @@ These are cf's docker cache and receptor script
 </br>
 If you can't use the bosh to deployment diego-docker-cache-release,you can use it.
 
-## 1.Download the rep
+## 1.Download the cf-cache with root user
 ```
 mkdir -p /var/vcap
 git clone https://github.com/wdxxs2z/cf-cache /var/vcap/
